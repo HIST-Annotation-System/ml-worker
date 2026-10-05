@@ -1,0 +1,17 @@
+[project]
+name = "ml-worker"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "cellpose>=4.2.1.1",
+    "matplotlib>=3.11.2",
+    "packaging>=24.1",
+    "torch>=2.5.1",
+    "torchaudio>=2.5.1",
+    "torchvision>=0.20.1",
+]
+
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/cu121"
