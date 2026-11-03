@@ -1,17 +1,34 @@
 [project]
 name = "ml-worker"
 version = "0.1.0"
-description = "Add your description here"
+description = "CellposeSAM segmentation worker: consumes hotspot jobs from Celery and returns cell polygons."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "boto3>=1.43.123",
+    "celery[redis,sqs]>=5.5",
     "cellpose>=4.2.1.1",
     "matplotlib>=3.11.2",
+    "numpy>=2.5.2",
+    "opencv-python-headless>=5.0.0.93",
     "packaging>=24.1",
+    "pillow>=12.3.0",
+    "pydantic>=2.14.2",
+    "pydantic-settings>=2.16.2",
+    "scipy>=1.18.1",
     "torch>=2.5.1",
     "torchaudio>=2.5.1",
     "torchvision>=0.20.1",
 ]
 
+# Explicit, so only the torch packages come from this index: as a default index it shadows PyPI for
+# everything else it happens to mirror (it holds an old urllib3 that Celery's SQS transport rejects).
 [[tool.uv.index]]
+name = "pytorch-cu121"
 url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu121" }
+torchaudio = { index = "pytorch-cu121" }
+torchvision = { index = "pytorch-cu121" }

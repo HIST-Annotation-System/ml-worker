@@ -1,0 +1,32 @@
+# Optional for the backend: without this stack hotspots simply stay `pending` and the app works as usual.
+services:
+  redis:
+    image: redis:7.4-alpine
+    # Keeps queued jobs and results across restarts.
+    command: [ "redis-server", "--appendonly", "yes" ]
+    ports:
+      # No password, so never on a public interface. The backend's containers reach it via host.docker.internal.
+      # On Linux without Docker Desktop set REDIS_BIND to the docker0 address (usually 172.17.0.1).
+      - "${REDIS_BIND:-127.0.0.1}:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  worker:
+    build: .
+    env_file: .env
+    gpus: all
+    volumes:
+      - model_cache:/models
+    restart: on-failure
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  redis_data:
+  model_cache:
