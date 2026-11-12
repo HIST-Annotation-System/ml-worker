@@ -15,10 +15,13 @@ class Settings(BaseSettings):
     BUCKET_NAME: str
     BUCKET_REGION: str
 
-    CELLPOSE_MODEL: str = "cpsam_v2"
-    CELLPOSE_BATCH_SIZE: int = 8
-    CELLPOSE_FLOW_THRESHOLD: float = 0.4
-    CELLPOSE_CELLPROB_THRESHOLD: float = 0.0
+    # One of Classpose's pretrained models; it decides which cell types are predicted (see README.md).
+    CLASSPOSE_MODEL: str = "consep"
+    # "bf16" (falls back to "fp16" on GPUs without it), "fp16" or "fp32".
+    CLASSPOSE_PRECISION: str = "bf16"
+    CLASSPOSE_BATCH_SIZE: int = 8
+    CLASSPOSE_FLOW_THRESHOLD: float = 0.4
+    CLASSPOSE_CELLPROB_THRESHOLD: float = 0.0
     # Larger images are reported as failed instead of risking an out-of-memory crash.
     SEGMENTATION_MAX_PIXELS: int = 16_777_216
     # How far (px) a simplified outline may stray from the mask: raw contours are too dense to edit by hand.

@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.26 /uv /uvx /bin/
 
@@ -7,15 +7,17 @@ WORKDIR /app
 ENV UV_PROJECT_ENVIRONMENT="/opt/venv"
 ENV PATH="/opt/venv/bin:$PATH"
 # On a volume, so the weights are downloaded once and not on every rebuild.
-ENV CELLPOSE_LOCAL_MODELS_PATH="/models"
+ENV CLASSPOSE_MODEL_DIR="/models"
 
 # The CUDA packages take gigabytes: with uv's defaults, small downloads time out while competing with them.
 ENV UV_HTTP_TIMEOUT="600"
 ENV UV_CONCURRENT_DOWNLOADS="4"
 
 COPY pyproject.toml uv.lock ./
+COPY scripts ./scripts
 
-RUN uv sync --frozen --no-dev
+# Classpose is installed from a copy of its source; see scripts/fetch_classpose.py.
+RUN python scripts/fetch_classpose.py && uv sync --frozen --no-dev
 
 COPY segmentation ./segmentation
 

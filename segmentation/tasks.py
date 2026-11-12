@@ -18,6 +18,7 @@ from segmentation.contract import (
     STATUS_FAILED,
     TASK_RUN,
     TASK_SAVE_RESULT,
+    Cell,
     SegmentationResult,
 )
 from segmentation.errors import SegmentationError
@@ -54,18 +55,21 @@ def _report(hotspot_id: str, status: str, **fields: Any) -> None:
     )
 
 
-def _segment_and_store(hotspot_id: str, image_key: str) -> str:
-    """Runs the model on the image and stores the polygons; returns the key of the stored file."""
+def _segment_and_store(hotspot_id: str, image_key: str, mpp: float | None) -> str:
+    """Runs the model on the image and stores the classified polygons; returns the key of the stored file."""
     settings = get_settings()
     image = _storage().load_rgb(image_key, settings.SEGMENTATION_MAX_PIXELS)
-    masks = inference.segment(image, settings)
+    masks, cell_types = inference.segment(image, mpp, settings)
     result = SegmentationResult(
         schema_version=SCHEMA_VERSION,
         hotspot_id=hotspot_id,
         model_version=inference.model_version(settings),
         image_width=image.shape[1],
         image_height=image.shape[0],
-        cells=masks_to_polygons(masks, settings.POLYGON_SIMPLIFY_PX),
+        cells=[
+            Cell(ring=ring, cell_type=cell_types[label])
+            for label, ring in masks_to_polygons(masks, settings.POLYGON_SIMPLIFY_PX)
+        ],
     )
     key = RESULT_KEY.format(hotspot_id=hotspot_id)
     _storage().put_json(key, result.model_dump_json())
@@ -74,11 +78,11 @@ def _segment_and_store(hotspot_id: str, image_key: str) -> str:
 
 
 @celery_app.task(name=TASK_RUN)
-def run_segmentation(schema_version: int, hotspot_id: str, image_key: str) -> None:
+def run_segmentation(schema_version: int, hotspot_id: str, image_key: str, mpp: float | None = None) -> None:
     try:
         if schema_version != SCHEMA_VERSION:
             raise SegmentationError(UNSUPPORTED_SCHEMA.format(schema_version=schema_version))
-        key = _segment_and_store(hotspot_id, image_key)
+        key = _segment_and_store(hotspot_id, image_key, mpp)
     except SegmentationError as exc:
         logger.warning("Hotspot %s failed: %s", hotspot_id, exc)
         _report(hotspot_id, STATUS_FAILED, error=str(exc))

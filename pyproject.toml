@@ -1,13 +1,15 @@
 [project]
 name = "ml-worker"
 version = "0.1.0"
-description = "CellposeSAM segmentation worker: consumes hotspot jobs from Celery and returns cell polygons."
+description = "Classpose segmentation worker: consumes hotspot jobs from Celery and returns classified cell polygons."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "boto3>=1.43.123",
     "celery[redis,sqs]>=5.5",
-    "cellpose>=4.2.1.1",
+    # The version Classpose is developed against: it imports Cellpose internals that later releases renamed.
+    "cellpose==4.0.8",
+    "classpose",
     "matplotlib>=3.11.2",
     "numpy>=2.5.2",
     "opencv-python-headless>=5.0.0.93",
@@ -16,19 +18,23 @@ dependencies = [
     "pydantic>=2.14.2",
     "pydantic-settings>=2.16.2",
     "scipy>=1.18.1",
-    "torch>=2.5.1",
-    "torchaudio>=2.5.1",
-    "torchvision>=0.20.1",
+    "torch>=2.6.0",
+    "torchaudio>=2.6.0",
+    "torchvision>=0.22.0",
 ]
 
 # Explicit, so only the torch packages come from this index: as a default index it shadows PyPI for
 # everything else it happens to mirror (it holds an old urllib3 that Celery's SQS transport rejects).
+# Classpose needs torch 2.6 or newer, which the cu121 index does not have.
 [[tool.uv.index]]
-name = "pytorch-cu121"
-url = "https://download.pytorch.org/whl/cu121"
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
 [tool.uv.sources]
-torch = { index = "pytorch-cu121" }
-torchaudio = { index = "pytorch-cu121" }
-torchvision = { index = "pytorch-cu121" }
+torch = { index = "pytorch-cu126" }
+torchaudio = { index = "pytorch-cu126" }
+torchvision = { index = "pytorch-cu126" }
+# Not on PyPI. Editable from a local copy that scripts/fetch_classpose.py downloads: a regular install of Classpose
+# leaves out its subpackages.
+classpose = { path = "vendor/classpose", editable = true }

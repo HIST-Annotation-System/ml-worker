@@ -1,4 +1,4 @@
-"""Cellpose label masks to the polygons the annotation editor can use."""
+"""The model's label masks to the polygons the annotation editor can use."""
 
 import cv2
 import numpy as np
@@ -13,13 +13,13 @@ COORDINATE_DECIMALS = 1
 type Ring = list[tuple[float, float]]
 
 
-def masks_to_polygons(masks: npt.NDArray[np.integer], simplify_px: float) -> list[Ring]:
-    """One simplified open ring per labelled cell.
+def masks_to_polygons(masks: npt.NDArray[np.integer], simplify_px: float) -> list[tuple[int, Ring]]:
+    """Each labelled cell's label and one simplified open ring.
 
     The backend's annotations have a single exterior ring and no holes, so a cell keeps the outer boundary of its
     largest piece. Cells too small to outline with a real area are dropped.
     """
-    rings: list[Ring] = []
+    rings: list[tuple[int, Ring]] = []
     # find_objects gives each label's bounding box, so no cell needs a pass over the whole image.
     for index, box in enumerate(ndimage.find_objects(masks)):
         if box is None:
@@ -33,13 +33,12 @@ def masks_to_polygons(masks: npt.NDArray[np.integer], simplify_px: float) -> lis
         outline = cv2.approxPolyDP(max(contours, key=cv2.contourArea), simplify_px, closed=True)
         if len(outline) < MIN_RING_VERTICES or cv2.contourArea(outline) <= 0:
             continue
-        rings.append(
-            [
-                (
-                    round(float(x) + PIXEL_CENTER_OFFSET, COORDINATE_DECIMALS),
-                    round(float(y) + PIXEL_CENTER_OFFSET, COORDINATE_DECIMALS),
-                )
-                for x, y in outline.reshape(-1, 2)
-            ]
-        )
+        ring = [
+            (
+                round(float(x) + PIXEL_CENTER_OFFSET, COORDINATE_DECIMALS),
+                round(float(y) + PIXEL_CENTER_OFFSET, COORDINATE_DECIMALS),
+            )
+            for x, y in outline.reshape(-1, 2)
+        ]
+        rings.append((index + 1, ring))
     return rings

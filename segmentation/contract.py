@@ -3,7 +3,7 @@ be made in `backend/app/services/segmentation.py` too, and `SCHEMA_VERSION` rais
 
 from pydantic import BaseModel
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Hyphens only: SQS queue names may not contain dots.
 JOBS_QUEUE = "segmentation-jobs"
@@ -19,6 +19,13 @@ STATUS_FAILED = "failed"
 RESULT_KEY = "hotspots/{hotspot_id}/segmentation.json"
 
 
+class Cell(BaseModel):
+    # An open ring of [x, y] in image pixels.
+    ring: list[tuple[float, float]]
+    # The model's name for the cell's type; null when it gave none.
+    cell_type: str | None
+
+
 class SegmentationResult(BaseModel):
     """The file stored at RESULT_KEY. Messages only carry its key: polygons do not reliably fit in an SQS message."""
 
@@ -27,5 +34,4 @@ class SegmentationResult(BaseModel):
     model_version: str
     image_width: int
     image_height: int
-    # One open ring per cell, as [x, y] in image pixels.
-    cells: list[list[tuple[float, float]]]
+    cells: list[Cell]
