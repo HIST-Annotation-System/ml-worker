@@ -22,4 +22,5 @@ RUN python scripts/fetch_classpose.py && uv sync --frozen --no-dev
 COPY segmentation ./segmentation
 
 # --pool=solo: one GPU runs one job. Gossip, mingle and heartbeat are worker-to-worker features SQS does not support.
-CMD ["celery", "-A", "segmentation.celery_app", "worker", "-Q", "segmentation-jobs", "--pool=solo", "--concurrency=1", "--without-gossip", "--without-mingle", "--without-heartbeat", "--loglevel=INFO"]
+# Through sh so LOG_LEVEL from the settings file applies; exec keeps Celery as PID 1 to receive stop signals.
+CMD ["sh", "-c", "exec celery -A segmentation.celery_app worker -Q segmentation-jobs --pool=solo --concurrency=1 --without-gossip --without-mingle --without-heartbeat --loglevel=${LOG_LEVEL:-INFO}"]
