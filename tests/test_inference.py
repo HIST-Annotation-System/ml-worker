@@ -127,12 +127,17 @@ class _Config:
 
 
 class FakeModel:
-    """Labels the left half of the image cell 1 (class 2), a block on the right cell 2 (background class)."""
+    """Labels the left half of the image cell 1 (class 2), a block on the right cell 2 (background class).
 
-    def __init__(self) -> None:
+    Its cell-probability logit is 2 in cell 1 and 0 elsewhere; class 2 has logit ln 3 in cell 1 and the other classes
+    0, so cell 1's type has probability 3 / 5 there.
+    """
+
+    def __init__(self, class_logits: bool = True) -> None:
         self.seen_shapes: list[tuple[int, ...]] = []
+        self.class_logits = class_logits
 
-    def eval(self, image: np.ndarray, **_: Any) -> tuple[np.ndarray, None, np.ndarray, None]:
+    def eval(self, image: np.ndarray, **_: Any) -> tuple[np.ndarray, tuple[Any, ...], np.ndarray, None]:
         self.seen_shapes.append(image.shape)
         height, width = image.shape[:2]
         masks = np.zeros((height, width), dtype=np.int32)
@@ -140,7 +145,11 @@ class FakeModel:
         masks[:, : width // 2] = 1
         classes[:, : width // 2] = 2
         masks[: height // 4, width * 3 // 4 :] = 2
-        return masks, None, classes, None
+        cellprob = np.where(masks == 1, 2.0, 0.0).astype(np.float32)
+        logits = np.zeros((3, height, width), dtype=np.float32)
+        logits[2][masks == 1] = np.log(3.0)
+        flows = (None, None, cellprob, logits if self.class_logits else None, image.shape)
+        return masks, flows, classes, None
 
 
 class TestSegment:
@@ -148,22 +157,39 @@ class TestSegment:
         config = SimpleNamespace(mpp=model_mpp, cell_types=["Tumor", "Lymphocyte"])
         monkeypatch.setattr(inference, "_load_model", lambda name, precision: (model, config))
 
-    def test_labels_and_their_cell_types(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_labels_their_cell_types_and_confidences(self, monkeypatch: pytest.MonkeyPatch) -> None:
         model = FakeModel()
         self.patch(monkeypatch, model)
-        masks, types = inference.segment(np.zeros((40, 40, 3), dtype=np.uint8), None, settings())
-        assert masks.shape == (40, 40)
-        assert types == [None, "Lymphocyte", None]
+        result = inference.segment(np.zeros((40, 40, 3), dtype=np.uint8), None, settings())
+        assert result.masks.shape == (40, 40)
+        assert result.cell_types == [None, "Lymphocyte", None]
         assert model.seen_shapes == [(40, 40, 3)]
+        # sigmoid(2) = 0.8808, sigmoid(0) = 0.5; the background-class cell has no type, so no type confidence.
+        assert result.outline_confidence == [None, 0.8808, 0.5]
+        assert result.class_confidence == [None, 0.6, None]
 
     def test_image_is_resized_for_the_model_and_masks_back(self, monkeypatch: pytest.MonkeyPatch) -> None:
         model = FakeModel()
         self.patch(monkeypatch, model, model_mpp=0.5)
-        masks, types = inference.segment(np.zeros((40, 60, 3), dtype=np.uint8), 0.25, settings())
+        result = inference.segment(np.zeros((40, 60, 3), dtype=np.uint8), 0.25, settings())
         assert model.seen_shapes == [(20, 30, 3)]
-        assert masks.shape == (40, 60)
-        assert set(np.unique(masks)) == {0, 1, 2}
-        assert types[1] == "Lymphocyte"
+        assert result.masks.shape == (40, 60)
+        assert set(np.unique(result.masks)) == {0, 1, 2}
+        assert result.cell_types[1] == "Lymphocyte"
+        # Measured on the model's own output, before the masks are resized back.
+        assert result.outline_confidence == [None, 0.8808, 0.5]
+        assert result.class_confidence == [None, 0.6, None]
+
+    def test_without_class_probabilities_the_cells_still_come_back(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        self.patch(monkeypatch, FakeModel(class_logits=False))
+        with caplog.at_level(logging.WARNING, logger=inference.__name__):
+            result = inference.segment(np.zeros((40, 40, 3), dtype=np.uint8), None, settings())
+        assert result.cell_types == [None, "Lymphocyte", None]
+        assert result.outline_confidence == [None, 0.8808, 0.5]
+        assert result.class_confidence == [None, None, None]
+        assert "no usable class probabilities" in caplog.text
 
 
 def test_model_version_names_the_package_and_the_model(monkeypatch: pytest.MonkeyPatch) -> None:

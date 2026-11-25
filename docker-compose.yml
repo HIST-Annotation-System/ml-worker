@@ -1,32 +1,29 @@
-# Optional for the backend: without this stack hotspots simply stay `pending` and the app works as usual.
-services:
-  redis:
-    image: redis:7.4-alpine
-    # Keeps queued jobs and results across restarts.
-    command: [ "redis-server", "--appendonly", "yes" ]
-    ports:
-      # No password, so never on a public interface. The backend's containers reach it via host.docker.internal.
-      # On Linux without Docker Desktop set REDIS_BIND to the docker0 address (usually 172.17.0.1).
-      - "${REDIS_BIND:-127.0.0.1}:6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
-      timeout: 3s
-      retries: 5
+# Optional for the backend: without a worker, hotspots simply stay `pending` and the app works as usual.
+# Two workers, one per backend, each with its own settings file (see .env.example):
+#   docker compose --profile local up -d --build   # the backend's local stack: its Redis and S3Mock (.env.local)
+#   docker compose --profile aws up -d --build     # the deployed app: SQS and the real bucket (.env.aws)
+# Both profiles at once share the GPU.
+x-worker: &worker
+  build: .
+  gpus: all
+  volumes:
+    - model_cache:/models
+  # The backend's local Redis and S3Mock are published on the host; this makes the name resolve on Linux too.
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  restart: on-failure
 
-  worker:
-    build: .
-    env_file: .env
-    gpus: all
-    volumes:
-      - model_cache:/models
-    restart: on-failure
-    depends_on:
-      redis:
-        condition: service_healthy
+services:
+  worker-local:
+    <<: *worker
+    profiles: [ "local" ]
+    env_file: .env.local
+
+  worker-aws:
+    <<: *worker
+    profiles: [ "aws" ]
+    env_file: .env.aws
 
 volumes:
-  redis_data:
+  # The model weights, downloaded once for both workers.
   model_cache:

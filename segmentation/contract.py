@@ -24,6 +24,11 @@ class Cell(BaseModel):
     ring: list[tuple[float, float]]
     # The model's name for the cell's type; null when it gave none.
     cell_type: str | None
+    # Added without raising SCHEMA_VERSION: optional both ways, so either side may be updated first.
+    # How sure the model is of the outline (mean cell probability of its pixels), 0..1.
+    outline_confidence: float | None = None
+    # How sure it is of the type (that type's mean probability over its pixels), 0..1; null without a type.
+    class_confidence: float | None = None
 
 
 class SegmentationResult(BaseModel):

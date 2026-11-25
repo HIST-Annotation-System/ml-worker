@@ -59,7 +59,7 @@ def _segment_and_store(hotspot_id: str, image_key: str, mpp: float | None) -> st
     """Runs the model on the image and stores the classified polygons; returns the key of the stored file."""
     settings = get_settings()
     image = _storage().load_rgb(image_key, settings.SEGMENTATION_MAX_PIXELS)
-    masks, cell_types = inference.segment(image, mpp, settings)
+    segmentation = inference.segment(image, mpp, settings)
     result = SegmentationResult(
         schema_version=SCHEMA_VERSION,
         hotspot_id=hotspot_id,
@@ -67,8 +67,13 @@ def _segment_and_store(hotspot_id: str, image_key: str, mpp: float | None) -> st
         image_width=image.shape[1],
         image_height=image.shape[0],
         cells=[
-            Cell(ring=ring, cell_type=cell_types[label])
-            for label, ring in masks_to_polygons(masks, settings.POLYGON_SIMPLIFY_PX)
+            Cell(
+                ring=ring,
+                cell_type=segmentation.cell_types[label],
+                outline_confidence=segmentation.outline_confidence[label],
+                class_confidence=segmentation.class_confidence[label],
+            )
+            for label, ring in masks_to_polygons(segmentation.masks, settings.POLYGON_SIMPLIFY_PX)
         ],
     )
     key = RESULT_KEY.format(hotspot_id=hotspot_id)
@@ -78,7 +83,11 @@ def _segment_and_store(hotspot_id: str, image_key: str, mpp: float | None) -> st
 
 
 @celery_app.task(name=TASK_RUN)
-def run_segmentation(schema_version: int, hotspot_id: str, image_key: str, mpp: float | None = None) -> None:
+def run_segmentation(
+    schema_version: int, hotspot_id: str, image_key: str, mpp: float | None = None, rescore: bool = False
+) -> None:
+    """Segments the hotspot's image and reports the stored result. A `rescore` (the backend asking again for a hotspot
+    segmented before confidences existed) runs exactly the same way: the backend then keeps only the confidences."""
     try:
         if schema_version != SCHEMA_VERSION:
             raise SegmentationError(UNSUPPORTED_SCHEMA.format(schema_version=schema_version))

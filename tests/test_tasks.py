@@ -18,6 +18,7 @@ from segmentation.contract import (
     SegmentationResult,
 )
 from segmentation.errors import SegmentationError
+from segmentation.inference import Segmentation
 
 HOTSPOT = "0b7c8c3e-0000-4000-8000-000000000001"
 
@@ -70,6 +71,14 @@ def test_success_reports_the_result_key(monkeypatch: pytest.MonkeyPatch, reports
             "result_key": "hotspots/x/segmentation.json",
         }
     ]
+
+
+def test_a_rescore_runs_like_a_first_segmentation(monkeypatch: pytest.MonkeyPatch, reports: Reports) -> None:
+    # The backend sends `rescore=True` for hotspots segmented before confidences existed; it keeps only those.
+    monkeypatch.setattr(tasks, "_segment_and_store", lambda hotspot_id, image_key, mpp: "hotspots/x/segmentation.json")
+    run(rescore=True)
+    [report] = reports.sent
+    assert (report["status"], report["result_key"]) == (STATUS_DONE, "hotspots/x/segmentation.json")
 
 
 def test_unsupported_job_format_fails_without_running(monkeypatch: pytest.MonkeyPatch, reports: Reports) -> None:
@@ -138,7 +147,8 @@ def test_segment_and_store_writes_the_result_file(monkeypatch: pytest.MonkeyPatc
     masks[5:15, 5:15] = 1
     masks[20:28, 30:45] = 2
     monkeypatch.setattr(tasks, "_storage", lambda: storage)
-    monkeypatch.setattr(tasks.inference, "segment", lambda image, mpp, settings: (masks, [None, "Tumor", None]))
+    segmentation = Segmentation(masks, [None, "Tumor", None], [None, 0.9, 0.7], [None, 0.6, None])
+    monkeypatch.setattr(tasks.inference, "segment", lambda image, mpp, settings: segmentation)
     monkeypatch.setattr(tasks.inference, "model_version", lambda settings: "v")
 
     key = tasks._segment_and_store(HOTSPOT, "img", None)
@@ -148,4 +158,5 @@ def test_segment_and_store_writes_the_result_file(monkeypatch: pytest.MonkeyPatc
     assert (result.schema_version, result.hotspot_id, result.model_version) == (SCHEMA_VERSION, HOTSPOT, "v")
     assert (result.image_width, result.image_height) == (50, 30)
     assert [cell.cell_type for cell in result.cells] == ["Tumor", None]
+    assert [(cell.outline_confidence, cell.class_confidence) for cell in result.cells] == [(0.9, 0.6), (0.7, None)]
     assert all(len(cell.ring) >= 3 for cell in result.cells)
